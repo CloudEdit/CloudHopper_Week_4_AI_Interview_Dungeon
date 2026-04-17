@@ -1,0 +1,287 @@
+{
+  "name": "Resume Parser - JavaScript Only (No Dependencies)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "parse-resume",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "webhookId": "resume-parser"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract text from uploaded file (basic text extraction)\n// Works with plain text PDFs and simple DOCX files\n\nconst items = $input.all();\nconst webhookData = items[0].json.body;\n\ntry {\n  // Get file from webhook body\n  let resumeText = '';\n  let fileName = '';\n  \n  // Check if file was uploaded\n  if (webhookData.files && webhookData.files.length > 0) {\n    const fileData = webhookData.files[0];\n    fileName = fileData.filename || 'resume';\n    \n    // Get file content (base64)\n    const fileContent = fileData.data || '';\n    \n    // Decode base64 to buffer\n    const buffer = Buffer.from(fileContent, 'base64');\n    \n    // Convert buffer to string\n    const rawText = buffer.toString('utf-8');\n    \n    // Basic text extraction (works for text-based PDFs and DOCX)\n    // Remove common binary markers and extract readable text\n    resumeText = rawText\n      .replace(/[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\x7F-\\x9F]/g, ' ') // Remove control chars\n      .replace(/\\s+/g, ' ') // Normalize whitespace\n      .trim();\n    \n    // If text is too short or looks corrupted, try alternative extraction\n    if (resumeText.length < 50) {\n      // For DOCX: try to extract from XML parts\n      if (fileName.includes('.docx') || fileName.includes('.doc')) {\n        const xmlMatches = rawText.match(/<w:t[^>]*>([^<]+)<\\/w:t>/g) || [];\n        resumeText = xmlMatches\n          .map(m => m.replace(/<[^>]+>/g, ''))\n          .join(' ')\n          .trim();\n      }\n    }\n    \n    // Get provider parameter (default to claude)\n    const provider = (webhookData.provider || 'claude').toString().toLowerCase();\n    \n    return [{\n      json: {\n        resumeText: resumeText || 'No text extracted from file',\n        provider: provider,\n        fileName: fileName\n      }\n    }];\n    \n  } else {\n    return [{\n      json: {\n        error: 'No file uploaded',\n        resumeText: '',\n        provider: 'claude',\n        fileName: ''\n      }\n    }];\n  }\n  \n} catch (error) {\n  return [{\n    json: {\n      error: 'Extraction failed: ' + error.message,\n      resumeText: '',\n      provider: 'claude',\n      fileName: ''\n    }\n  }];\n}"
+      },
+      "id": "extract-file-js",
+      "name": "Extract Text (JavaScript)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.provider }}",
+                    "rightValue": "claude",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "claude"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.provider }}",
+                    "rightValue": "ollama",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ollama"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "switch-provider",
+      "name": "Switch Provider",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resumeText = $json.resumeText;\n\nconst prompt = `Extract structured information from this resume. Return ONLY valid JSON with no markdown formatting or code blocks.\n\nResume:\n${resumeText}\n\nReturn this exact structure:\n{\n  \"skills\": [\"skill1\", \"skill2\"],\n  \"experience\": [\n    {\n      \"title\": \"Job Title\",\n      \"company\": \"Company Name\",\n      \"duration\": \"2020-2023\",\n      \"highlights\": [\"achievement1\", \"achievement2\"]\n    }\n  ],\n  \"education\": [\n    {\n      \"degree\": \"Degree Name\",\n      \"institution\": \"School Name\",\n      \"year\": \"2020\"\n    }\n  ]\n}`;\n\nreturn [{\n  json: {\n    prompt: prompt,\n    resumeText: resumeText\n  }\n}];"
+      },
+      "id": "prepare-claude",
+      "name": "Prepare Claude Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resumeText = $json.resumeText;\n\nconst prompt = `Extract structured information from this resume. Return ONLY valid JSON with no markdown formatting or code blocks.\n\nResume:\n${resumeText}\n\nReturn this exact structure:\n{\n  \"skills\": [\"skill1\", \"skill2\"],\n  \"experience\": [\n    {\n      \"title\": \"Job Title\",\n      \"company\": \"Company Name\",\n      \"duration\": \"2020-2023\",\n      \"highlights\": [\"achievement1\", \"achievement2\"]\n    }\n  ],\n  \"education\": [\n    {\n      \"degree\": \"Degree Name\",\n      \"institution\": \"School Name\",\n      \"year\": \"2020\"\n    }\n  ]\n}`;\n\nreturn [{\n  json: {\n    prompt: prompt,\n    resumeText: resumeText\n  }\n}];"
+      },
+      "id": "prepare-ollama",
+      "name": "Prepare Ollama Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.CLAUDE_API_KEY }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({\n  model: 'claude-sonnet-4-20250514',\n  max_tokens: 2000,\n  messages: [{\n    role: 'user',\n    content: $json.prompt\n  }]\n}) }}"
+      },
+      "id": "http-claude",
+      "name": "Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:11434/api/generate",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ JSON.stringify({\n  model: 'llama3.2',\n  prompt: $json.prompt,\n  stream: false\n}) }}"
+      },
+      "id": "http-ollama",
+      "name": "Ollama API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the response from either Claude or Ollama\nlet responseText = '';\n\n// Check which provider was used\nif ($json.content) {\n  // Claude response\n  responseText = $json.content[0].text;\n} else if ($json.response) {\n  // Ollama response\n  responseText = $json.response;\n} else {\n  return [{\n    json: {\n      error: 'Unknown response format',\n      skills: [],\n      experience: [],\n      education: []\n    }\n  }];\n}\n\n// Strip markdown code fences\nconst cleaned = responseText\n  .replace(/```json\\n?/g, '')\n  .replace(/```\\n?/g, '')\n  .trim();\n\ntry {\n  // Parse the JSON\n  const parsed = JSON.parse(cleaned);\n  \n  return [{\n    json: {\n      skills: parsed.skills || [],\n      experience: parsed.experience || [],\n      education: parsed.education || []\n    }\n  }];\n} catch (error) {\n  return [{\n    json: {\n      error: 'Failed to parse JSON: ' + error.message,\n      rawResponse: cleaned,\n      skills: [],\n      experience: [],\n      education: []\n    }\n  }];\n}"
+      },
+      "id": "parse-response",
+      "name": "Parse LLM Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1560, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Text (JavaScript)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Text (JavaScript)": {
+      "main": [
+        [
+          {
+            "node": "Switch Provider",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Provider": {
+      "main": [
+        [
+          {
+            "node": "Prepare Claude Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Ollama Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Claude Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Ollama Prompt": {
+      "main": [
+        [
+          {
+            "node": "Ollama API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude API": {
+      "main": [
+        [
+          {
+            "node": "Parse LLM Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama API": {
+      "main": [
+        [
+          {
+            "node": "Parse LLM Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LLM Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-04-17T00:00:00.000Z",
+  "versionId": "1"
+}
