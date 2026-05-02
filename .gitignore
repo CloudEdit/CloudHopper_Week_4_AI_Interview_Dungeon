@@ -1,0 +1,9 @@
+.venv
+script
+prod
+.env
+*.pdf
+*.doc
+*.docx
+n8n_nodes
+script

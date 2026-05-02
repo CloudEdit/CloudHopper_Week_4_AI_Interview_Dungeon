@@ -18,6 +18,27 @@ Streamlit UI ──► n8n Workflow ──► Claude API / Ollama
      └──────────► SQLite Database ◄───────┘
 ```
 
+## n8n Workflows
+
+The app uses 3 separate n8n workflows:
+
+1. **Resume Parser** (`/parse-resume`)
+   - Input: Resume text + provider
+   - Output: Structured JSON (skills, experience, education)
+   - Called: Once at the start
+
+2. **Question Generator** (`/generate-question`)
+   - Input: Resume data, role, difficulty, Q&A history
+   - Output: Single interview question
+   - Called: N times during interview
+
+3. **Interview Scorer** (`/score-interview`)
+   - Input: Resume data, role, Q&A transcript
+   - Output: Score + strengths + weaknesses
+   - Called: Once at the end
+
+Import all 3 workflows into n8n and activate them before running the app.
+
 ## Prerequisites
 
 1. **n8n** (with the Resume Parser workflow imported and active)
@@ -38,15 +59,19 @@ pip install -r requirements.txt
 # For Claude API (paid option)
 export CLAUDE_API_KEY=sk-ant-api03-your-key-here
 
-# n8n webhook URL (update with your n8n instance)
+# n8n webhook URLs
 export N8N_WEBHOOK_URL=http://localhost:5678/webhook/parse-resume
+export N8N_QUESTION_WEBHOOK_URL=http://localhost:5678/webhook/generate-question
+export N8N_SCORE_WEBHOOK_URL=http://localhost:5678/webhook/score-interview
 ```
 
-### 3. Make Sure n8n Workflow is Running
+### 3. Make Sure n8n Workflows are Running
 
-- Import `resume-parser-workflow.json` into n8n
-- Activate the workflow
-- Copy the webhook URL from the Webhook node
+- Import all 3 workflow JSON files into n8n:
+  - `resume-parser-workflow-v2.json`
+  - `question-generator-workflow.json`
+  - `interview-scorer-workflow.json`
+- Activate all 3 workflows
 
 ### 4. Run the App
 
